@@ -1765,7 +1765,7 @@ def test_does_not_crash_on_recursive_symlink(pytester: Pytester) -> None:
 
 @pytest.mark.skipif(not sys.platform.startswith("win"), reason="Windows only")
 def test_collect_short_file_windows(pytester: Pytester) -> None:
-    """Reproducer for #11895: short paths not colleced on Windows."""
+    """Reproducer for #11895: short paths not collected on Windows."""
     short_path = tempfile.mkdtemp()
     if "~" not in short_path:  # pragma: no cover
         if running_on_ci():
@@ -1786,4 +1786,13 @@ def test_collect_short_file_windows(pytester: Pytester) -> None:
     test_file = Path(short_path).joinpath("test_collect_short_file_windows.py")
     test_file.write_text("def test(): pass", encoding="UTF-8")
     result = pytester.runpytest(short_path)
+    assert result.parseoutcomes() == {"passed": 1}
+
+
+# @pytest.mark.skipif(not sys.platform.startswith("win"), reason="Windows only")
+def test_collect_symlinks_windows(pytester: Pytester, tmpdir) -> None:
+    """Regression test for #12039: Tests collected multiple times under Windows."""
+    test_file = Path(tmpdir) / "symlink_collection_test.py"
+    test_file.write_text("def test(): pass", encoding="UTF-8")
+    result = pytester.runpytest(tmpdir)
     assert result.parseoutcomes() == {"passed": 1}

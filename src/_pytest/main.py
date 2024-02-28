@@ -6,6 +6,7 @@ import fnmatch
 import functools
 import importlib
 import os
+import stat
 from pathlib import Path
 import sys
 from typing import AbstractSet
@@ -441,6 +442,20 @@ def pytest_collection_modifyitems(items: List[nodes.Item], config: Config) -> No
     if deselected:
         config.hook.pytest_deselected(items=deselected)
         items[:] = remaining
+
+
+def _is_junction(path: Path) -> bool:
+    if sys.version_info >= (3, 12):
+        return os.path.isjunction(path)
+
+    if hasattr(os.stat_result, 'st_reparse_tag'):
+        try:
+            st = os.lstat(path)
+        except (OSError, ValueError, AttributeError):
+            return False
+        return bool(st.st_reparse_tag == stat.IO_REPARSE_TAG_MOUNT_POINT)
+
+    return False
 
 
 class FSHookProxy:
@@ -907,9 +922,16 @@ class Session(nodes.Collector):
                     if isinstance(matchparts[0], Path):
                         is_match = node.path == matchparts[0]
                         if sys.platform == "win32" and not is_match:
-                            # In case the file paths do not match, fallback to samefile() to
+                            # In case the file paths do not match,
                             # account for short-paths on Windows (#11895).
-                            is_match = os.path.samefile(node.path, matchparts[0])
+                            same_file = os.path.samefile(node.path, matchparts[0])
+                            # we don't want to find links or junctions, so we at least
+                            # exclude links/junctions to regular directories
+                            is_match = (
+                                    same_file
+                                    # os.path.islink(node.path) == os.path.islink(matchparts[0])
+                            )
+
                     # Name part e.g. `TestIt` in `/a/b/test_file.py::TestIt::test_it`.
                     else:
                         # TODO: Remove parametrized workaround once collection structure contains
